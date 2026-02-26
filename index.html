@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Harf Mimarı</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header>
+  <div class="logo">Harf Mimarı</div>
+  <div class="score-area">
+    <div class="score-item">
+      <div class="score-label">Puan</div>
+      <div class="score-value" id="score-display">0</div>
+    </div>
+    <div class="score-item">
+      <div class="score-label">Kelime</div>
+      <div class="score-value" id="word-display">0</div>
+    </div>
+  </div>
+</header>
+
+<div class="game-wrapper">
+
+  <div class="leaderboard">
+    <h3>🌍 Sıralama</h3>
+    <div id="leaderboard-list"></div>
+  </div>
+
+  <div class="game-area">
+    <div class="status-msg" id="status-msg">ZAR AT VE BAŞLA</div>
+    <div id="grid-container">
+      <div id="game-grid"></div>
+    </div>
+  </div>
+
+  <div class="controls-panel">
+    <div class="panel-box">
+      <div class="panel-title">Harf Seç</div>
+      <div class="letter-choices" id="letter-choices"></div>
+      <br>
+      <button class="shuffle-btn" id="shuffle-btn" disabled>
+        ↺ Karıştır <span class="shuffle-count" id="shuffle-count">(1)</span>
+      </button>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-title">Yeni Tur</div>
+      <button class="dice-btn" id="dice-btn">
+        <span class="dice-icon">⚄</span> ZAR AT
+      </button>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-title">Nasıl Oynanır</div>
+      <div style="font-size:9px; line-height:1.8; color: var(--text-dim); letter-spacing:1px;">
+        1. ZAR AT<br>
+        2. Doğru harfi seç<br>
+        3. Harfleri sürükle, kelime kur<br>
+        4. Yanlış seçim yukarı düşer!<br>
+        5. Tavan = GAME OVER
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="overlay" id="overlay">
+  <h1>GAME OVER</h1>
+  <div class="final-score" id="final-score">0 PUAN</div>
+  <p>Skoru kaydet</p>
+  <div class="name-input-wrap">
+    <input type="text" id="player-name" placeholder="Adını yaz" maxlength="10">
+    <button class="submit-name-btn" id="submit-score-btn">KAYDET</button>
+  </div>
+  <button class="restart-btn" id="restart-btn">YENİDEN OYNA</button>
+</div>
+
+<script src="words.js"></script>
+<script src="leaderboard.js"></script>
+<script src="game.js"></script>
+
+</body>
+</html>
