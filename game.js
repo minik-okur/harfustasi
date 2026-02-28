@@ -1,392 +1,300 @@
-// ===== GAME STATE =====
-const GRID_COLS = 6;
-const GRID_ROWS = 12;
-const DANGER_ROWS = 10;
-const workRow = GRID_ROWS - 1;
+/* ═══════════════════════════════════════════════
+   game.js — Ana Oyun Orkestratörü
+   Pipes · Scoring · Themes · Freeze · SectionEnd
+   hepsini yönetir.
+═══════════════════════════════════════════════ */
 
-let grid = [];
-let score = 0;
-let wordsCompleted = 0;
-let gameActive = false;
-let currentWord = null;
-let dragSource = null;
-let shuffleUsed = false;
-let letterChoices = [];
-let correctLetter = null;
-let waitingForChoice = false;
+const Game = (() => {
 
-// ===== GRID =====
-function initGrid() {
-  grid = [];
-  for (let r = 0; r < GRID_ROWS; r++) {
-    grid.push([]);
-    for (let c = 0; c < GRID_COLS; c++) {
-      grid[r].push(null);
-    }
+  /* ── Durum ── */
+  let state = {
+    running:       false,
+    currentWord:   null,      // { word, def, theme, tags }
+    missingIndices:[],        // Hangi pozisyonlar eksik
+    collectedCount:0,         // Bu kelimede kaç harf toplandı
+    usedWords:     [],        // Bu oturumda kullanılan kelimeler
+    sectionWords:  [],        // Bu bölümde (5'li grup) çözülen kelimeler
+    currentLevel:  1,
+    currentTheme:  'mutfak',
+    pipeSpeed:     2200,
+  };
+
+  /* ── Durum mesajı ── */
+  function setStatus(msg, type = '') {
+    const el = document.getElementById('status-msg');
+    if (!el) return;
+    el.textContent   = msg;
+    el.className     = 'status-msg' + (type ? ` ${type}` : '');
   }
-}
 
-function renderGrid() {
-  const container = document.getElementById('game-grid');
-  container.innerHTML = '';
-  container.style.gridTemplateColumns = `repeat(${GRID_COLS}, 1fr)`;
+  /* ── Kelime tanımını göster ── */
+  function showWordDef(def) {
+    const el = document.getElementById('word-def');
+    if (el) el.textContent = def || '—';
+  }
 
-  for (let r = 0; r < GRID_ROWS; r++) {
-    for (let c = 0; c < GRID_COLS; c++) {
-      const cell = document.createElement('div');
-      cell.className = 'grid-cell';
-      cell.dataset.row = r;
-      cell.dataset.col = c;
+  /* ── Boru turunu hazırla ── */
+  function prepareRound() {
+    if (!state.currentWord) return;
 
-      const data = grid[r][c];
-      if (data) {
-        cell.textContent = data.letter;
-        if (data.type === 'wrong') cell.classList.add('filled-wrong');
-        if (data.type === 'work') {
-          cell.classList.add('work-cell');
-          if (data.isEmpty) cell.classList.add('empty-slot');
+    const word    = state.currentWord.word;
+    const missing = state.missingIndices;
+
+    // Hangi harfler eksik?
+    const remainingMissing = missing.filter(
+      (_, i) => i >= state.collectedCount
+    );
+
+    if (remainingMissing.length === 0) {
+      // Tüm harfler toplandı → donma moduna geç
+      startFreeze();
+      return;
+    }
+
+    // Sıradaki eksik harfin konumu
+    const nextIdx    = remainingMissing[0];
+    const correct    = word[nextIdx];
+    const wrongs     = getWrongLetters(correct, 2);
+
+    setStatus(`${state.collectedCount + 1}. HARF: DOĞRUYU SEÇ`, 'info');
+
+    // Boruları başlat
+    Pipes.newRound(correct, wrongs, state.pipeSpeed);
+  }
+
+  /* ── Doğru harf seçildi ── */
+  function onCorrectHit(letter) {
+    state.collectedCount++;
+    Scoring.correctHit();
+    setStatus(`✓ DOĞRU — ${letter}`, 'good');
+
+    // Kısa gecikme sonra bir sonraki tura geç
+    setTimeout(() => {
+      if (!state.running) return;
+      prepareRound();
+    }, 600);
+  }
+
+  /* ── Yanlış harf veya kaçırma ── */
+  function onMissHit() {
+    Scoring.wrongHit();
+    setStatus('✗ YANLIŞ — TEZGAH YUKARI!', 'bad');
+
+    setTimeout(() => {
+      if (!state.running) return;
+      // Aynı harfi tekrar sor
+      prepareRound();
+    }, 700);
+  }
+
+  /* ── Donma modunu başlat ── */
+  function startFreeze() {
+    Pipes.stop();
+    setStatus('DONMA MODU — HARFLERİ DİZ!', 'info');
+
+    const letters = state.missingIndices.map(i => state.currentWord.word[i]);
+
+    // Kelimenin eksik harflerinden oluşan hedef (sadece eksik harfler sıralı)
+    const target = letters.join('');
+
+    Freeze.start(target, letters, (solved) => {
+      if (solved) {
+        Scoring.wordSolved();
+        setStatus('🎉 KELİME TAMAMLANDI!', 'good');
+        showWordDef(state.currentWord.def);
+
+        state.sectionWords.push(state.currentWord.word);
+
+        // Parçacık efekti
+        spawnParticles();
+
+        // 5 kelime bölüm sonu kontrolü
+        if (state.sectionWords.length >= 5) {
+          setTimeout(() => showSectionEnd(), 1200);
+        } else {
+          setTimeout(() => nextWord(), 1500);
         }
+      } else {
+        // Çözülemedi
+        Scoring.wordFailed();
+        setStatus('SÜRE DOLDU — DEVAM', 'bad');
+        setTimeout(() => nextWord(), 900);
       }
+    });
+  }
 
-      if (data && data.type === 'work' && !data.isEmpty) {
-        cell.draggable = true;
-        cell.addEventListener('dragstart', onDragStart);
-        cell.addEventListener('dragend', onDragEnd);
+  /* ── Bir sonraki kelimeye geç ── */
+  function nextWord() {
+    if (!state.running) return;
+
+    // Seviye hesapla
+    const wordCount = Scoring.getWordCount();
+    const newLevel  = Math.floor(wordCount / 3) + 1;
+    const clampedLevel = Math.min(newLevel, 15);
+
+    if (clampedLevel !== state.currentLevel) {
+      state.currentLevel = clampedLevel;
+      Scoring.setLevel(clampedLevel);
+
+      const cfg = Themes.getLevelConfig(clampedLevel);
+      state.pipeSpeed  = cfg.speed;
+
+      const themeChanged = Themes.setLevel(clampedLevel);
+      if (themeChanged) {
+        state.currentTheme = Themes.getCurrentThemeId();
+        // Tema intro göster
+        Pipes.stop();
+        Themes.showThemeIntro(state.currentTheme, () => {
+          loadWord();
+        });
+        return;
       }
-
-      if (data && data.type === 'work') {
-        cell.addEventListener('dragover', onDragOver);
-        cell.addEventListener('drop', onDrop);
-        cell.addEventListener('dragleave', onDragLeave);
-      }
-
-      container.appendChild(cell);
     }
+
+    loadWord();
   }
-}
 
-function getCellElement(r, c) {
-  return document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
-}
+  /* ── Yeni kelime yükle ── */
+  function loadWord() {
+    const cfg     = Themes.getCurrentConfig();
+    const wordObj = getRandomWord(state.currentTheme, state.currentLevel, state.usedWords);
 
-// ===== DRAG & DROP =====
-function onDragStart(e) {
-  dragSource = {row: parseInt(e.target.dataset.row), col: parseInt(e.target.dataset.col)};
-  e.target.classList.add('dragging');
-}
-
-function onDragEnd(e) {
-  e.target.classList.remove('dragging');
-  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-}
-
-function onDragOver(e) {
-  e.preventDefault();
-  e.currentTarget.classList.add('drag-over');
-}
-
-function onDragLeave(e) {
-  e.currentTarget.classList.remove('drag-over');
-}
-
-function onDrop(e) {
-  e.preventDefault();
-  e.currentTarget.classList.remove('drag-over');
-  if (!dragSource) return;
-
-  const targetRow = parseInt(e.currentTarget.dataset.row);
-  const targetCol = parseInt(e.currentTarget.dataset.col);
-
-  if (targetRow !== dragSource.row) return;
-
-  const srcData = grid[dragSource.row][dragSource.col];
-  const tgtData = grid[targetRow][targetCol];
-
-  if (!tgtData || tgtData.type !== 'work') return;
-
-  grid[dragSource.row][dragSource.col] = tgtData;
-  grid[targetRow][targetCol] = srcData;
-
-  dragSource = null;
-  renderGrid();
-  checkWordCompletion();
-}
-
-// ===== ROUND =====
-function startNewRound() {
-  if (!gameActive) return;
-
-  currentWord = WORD_LIST[Math.floor(Math.random() * WORD_LIST.length)];
-  const wordLetters = currentWord.split('');
-  const missingIdx = Math.floor(Math.random() * wordLetters.length);
-  correctLetter = wordLetters[missingIdx];
-
-  const remaining = [...wordLetters];
-  remaining[missingIdx] = null;
-  const shuffled = shuffleArray(remaining);
-
-  const startCol = Math.floor((GRID_COLS - wordLetters.length) / 2);
-  for (let c = 0; c < GRID_COLS; c++) grid[workRow][c] = null;
-
-  shuffled.forEach((letter, i) => {
-    grid[workRow][startCol + i] = {
-      letter: letter || '_',
-      type: 'work',
-      isEmpty: letter === null
-    };
-  });
-
-  generateLetterChoices();
-  shuffleUsed = false;
-  updateShuffleBtn();
-  waitingForChoice = true;
-
-  renderGrid();
-  setStatus('Doğru harfi seç!', 'info');
-}
-
-function generateLetterChoices() {
-  const wrong = [];
-  while (wrong.length < 4) {
-    const l = TURKISH_ALPHABET[Math.floor(Math.random() * TURKISH_ALPHABET.length)];
-    if (l !== correctLetter && !wrong.includes(l)) wrong.push(l);
-  }
-  letterChoices = shuffleArray([...wrong, correctLetter]);
-  renderLetterChoices();
-}
-
-function renderLetterChoices() {
-  const container = document.getElementById('letter-choices');
-  container.innerHTML = '';
-  letterChoices.forEach(letter => {
-    const btn = document.createElement('button');
-    btn.className = 'letter-btn';
-    btn.innerHTML = `<span>${letter}</span>`;
-    btn.addEventListener('click', () => onLetterChosen(letter, btn));
-    container.appendChild(btn);
-  });
-}
-
-function onLetterChosen(letter, btn) {
-  if (!waitingForChoice || !gameActive) return;
-  waitingForChoice = false;
-
-  if (letter === correctLetter) {
-    btn.classList.add('correct-pick');
-    addScore(5);
-    setStatus('+5 PUAN! Harfleri diz!', 'good');
-    placeLetterInSlot(letter);
-    disableLetterButtons();
-  } else {
-    btn.classList.add('wrong-pick');
-    setStatus('YANLIŞ! Blok düştü!', 'bad');
-    dropWrongBlock();
-    setTimeout(() => { waitingForChoice = true; }, 600);
-  }
-}
-
-function placeLetterInSlot(letter) {
-  const startCol = Math.floor((GRID_COLS - currentWord.length) / 2);
-  for (let c = startCol; c < startCol + currentWord.length; c++) {
-    if (grid[workRow][c] && grid[workRow][c].isEmpty) {
-      grid[workRow][c] = {letter, type: 'work', isEmpty: false};
-      break;
+    if (!wordObj) {
+      setStatus('KELİME KALMADI!', 'bad');
+      return;
     }
+
+    state.usedWords.push(wordObj.word);
+    state.currentWord    = wordObj;
+    state.collectedCount = 0;
+
+    // Eksik harf pozisyonlarını belirle
+    const missingCount = cfg.missingCount;
+    state.missingIndices = pickMissingIndices(wordObj.word, missingCount);
+
+    // Boruları yeniden başlat
+    Pipes.start({
+      onCorrect: onCorrectHit,
+      onMiss:    onMissHit,
+      speed:     state.pipeSpeed,
+    });
+
+    setStatus(`YENİ KELİME — ${wordObj.word.length} HARF`, 'info');
+    setTimeout(() => prepareRound(), 500);
   }
-  renderGrid();
-}
 
-function dropWrongBlock() {
-  const col = Math.floor(Math.random() * GRID_COLS);
-  let targetRow = -1;
-  for (let r = DANGER_ROWS - 1; r >= 0; r--) {
-    if (!grid[r][col]) { targetRow = r; break; }
+  /* ── Rastgele eksik harf pozisyonları seç ── */
+  function pickMissingIndices(word, count) {
+    const indices = Array.from({ length: word.length }, (_, i) => i);
+    const shuffled = indices.sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, Math.min(count, word.length)).sort((a, b) => a - b);
   }
 
-  if (targetRow === -1) { triggerGameOver(); return; }
+  /* ── Bölüm sonu ── */
+  function showSectionEnd() {
+    Pipes.stop();
+    const words = [...state.sectionWords];
+    state.sectionWords = [];
 
-  const randomLetter = TURKISH_ALPHABET[Math.floor(Math.random() * TURKISH_ALPHABET.length)];
-  grid[targetRow][col] = {letter: randomLetter, type: 'wrong'};
-  renderGrid();
-  checkDangerLevel();
-}
+    SectionEnd.show(words, () => {
+      loadWord();
+    });
+  }
 
-function checkDangerLevel() {
-  let maxFilled = 0;
-  for (let c = 0; c < GRID_COLS; c++) {
-    for (let r = 0; r < DANGER_ROWS; r++) {
-      if (grid[r][c]) {
-        const depth = DANGER_ROWS - r;
-        if (depth > maxFilled) maxFilled = depth;
-      }
+  /* ── Oyun sonu ── */
+  function triggerGameOver({ score, personalBest, level, wordCount }) {
+    state.running = false;
+    Pipes.stop();
+    Freeze.cancel();
+
+    const overlay   = document.getElementById('overlay');
+    const finalScore = document.getElementById('final-score');
+    const finalPB   = document.getElementById('final-personal-best');
+
+    if (finalScore) finalScore.textContent = `${score} PUAN`;
+    if (finalPB)    finalPB.textContent    = personalBest || score;
+    if (overlay)    overlay.classList.add('active');
+  }
+
+  /* ── Parçacık efekti ── */
+  function spawnParticles() {
+    const colors = ['#c0392b','#2d6a4f','#b8860b','#1a3a5c','#6b2d6b'];
+    for (let i = 0; i < 14; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.setProperty('--tx', (Math.random() * 200 - 100) + 'px');
+      p.style.setProperty('--ty', (Math.random() * -160 - 40) + 'px');
+      p.style.background = colors[Math.floor(Math.random() * colors.length)];
+      p.style.left = (Math.random() * 80 + 10) + 'vw';
+      p.style.top  = '50vh';
+      document.body.appendChild(p);
+      setTimeout(() => p.remove(), 900);
     }
   }
 
-  if (maxFilled >= DANGER_ROWS) {
-    triggerGameOver();
-  } else if (maxFilled >= DANGER_ROWS * 0.7) {
-    document.body.classList.add('danger');
-  } else {
-    document.body.classList.remove('danger');
-  }
-}
+  /* ── Başlat ── */
+  function start() {
+    state.running       = true;
+    state.usedWords     = [];
+    state.sectionWords  = [];
+    state.currentLevel  = 1;
+    state.currentTheme  = 'mutfak';
+    state.pipeSpeed     = 2200;
 
-function checkWordCompletion() {
-  if (!currentWord) return;
-  const startCol = Math.floor((GRID_COLS - currentWord.length) / 2);
-  let formed = '';
-  for (let i = 0; i < currentWord.length; i++) {
-    const cell = grid[workRow][startCol + i];
-    if (!cell || cell.isEmpty) return;
-    formed += cell.letter;
-  }
-  if (formed === currentWord) wordSuccess();
-}
+    Scoring.init({
+      onGameOver: triggerGameOver,
+    });
+    Scoring.initGrid();
+    Themes.init();
 
-function wordSuccess() {
-  addScore(10);
-  wordsCompleted++;
-  document.getElementById('word-display').textContent = wordsCompleted;
-  setStatus('+10 PUAN! ' + currentWord + '!', 'good');
+    const overlay = document.getElementById('overlay');
+    if (overlay) overlay.classList.remove('active');
 
-  const startCol = Math.floor((GRID_COLS - currentWord.length) / 2);
-  for (let i = 0; i < currentWord.length; i++) {
-    const cell = getCellElement(workRow, startCol + i);
-    if (cell) cell.classList.add('correct-row');
+    // İlk tema intro
+    Themes.showThemeIntro('mutfak', () => {
+      loadWord();
+    });
   }
 
-  spawnParticles();
-
-  setTimeout(() => {
-    clearBottomRow();
-    renderGrid();
-    currentWord = null;
-    setTimeout(() => startNewRound(), 300);
-  }, 700);
-}
-
-function clearBottomRow() {
-  for (let c = 0; c < GRID_COLS; c++) grid[workRow][c] = null;
-  for (let r = DANGER_ROWS - 1; r > 0; r--) {
-    for (let c = 0; c < GRID_COLS; c++) grid[r][c] = grid[r - 1][c];
+  /* ── Yeniden oyna ── */
+  function restart() {
+    Pipes.stop();
+    Freeze.cancel();
+    start();
   }
-  for (let c = 0; c < GRID_COLS; c++) grid[0][c] = null;
-  checkDangerLevel();
-}
 
-function spawnParticles() {
-  const colors = ['#e8ff47', '#2ed573', '#ff4757', '#fff'];
-  for (let i = 0; i < 20; i++) {
-    const p = document.createElement('div');
-    p.className = 'particle';
-    const x = window.innerWidth / 2 + (Math.random() - 0.5) * 300;
-    const y = window.innerHeight / 2;
-    p.style.left = x + 'px';
-    p.style.top = y + 'px';
-    p.style.background = colors[Math.floor(Math.random() * colors.length)];
-    const tx = (Math.random() - 0.5) * 200;
-    const ty = (Math.random() - 1.5) * 150;
-    p.style.setProperty('--tx', tx + 'px');
-    p.style.setProperty('--ty', ty + 'px');
-    document.body.appendChild(p);
-    setTimeout(() => p.remove(), 800);
+  /* ── Event listener'lar ── */
+  function bindEvents() {
+    document.getElementById('start-btn')?.addEventListener('click', () => {
+      if (!state.running) start();
+    });
+
+    document.getElementById('restart-btn')?.addEventListener('click', () => {
+      document.getElementById('overlay')?.classList.remove('active');
+      restart();
+    });
+
+    document.getElementById('submit-score-btn')?.addEventListener('click', () => {
+      const name = document.getElementById('player-name')?.value?.trim();
+      if (name) {
+        // Leaderboard kaydı (basit localStorage)
+        const scores = JSON.parse(localStorage.getItem('hm_scores') || '[]');
+        scores.push({ name, score: Scoring.getScore(), date: Date.now() });
+        scores.sort((a, b) => b.score - a.score);
+        localStorage.setItem('hm_scores', JSON.stringify(scores.slice(0, 20)));
+        document.getElementById('submit-score-btn').textContent = 'KAYDEDİLDİ ✓';
+      }
+    });
   }
-}
 
-// ===== SCORE =====
-function addScore(pts) {
-  score += pts;
-  document.getElementById('score-display').textContent = score;
-}
-
-// ===== STATUS =====
-function setStatus(msg, type = '') {
-  const el = document.getElementById('status-msg');
-  el.textContent = msg;
-  el.className = 'status-msg' + (type ? ' ' + type : '');
-}
-
-// ===== SHUFFLE =====
-function shuffleLetterChoices() {
-  if (shuffleUsed || !waitingForChoice) return;
-  shuffleUsed = true;
-  updateShuffleBtn();
-  generateLetterChoices();
-}
-
-function updateShuffleBtn() {
-  const btn = document.getElementById('shuffle-btn');
-  const countEl = document.getElementById('shuffle-count');
-  if (shuffleUsed) {
-    btn.disabled = true;
-    countEl.textContent = '(0)';
-  } else {
-    btn.disabled = false;
-    countEl.textContent = '(1)';
-  }
-}
-
-function disableLetterButtons() {
-  document.querySelectorAll('.letter-btn').forEach(btn => btn.style.pointerEvents = 'none');
-  document.getElementById('shuffle-btn').disabled = true;
-}
-
-// ===== GAME OVER =====
-function triggerGameOver() {
-  gameActive = false;
-  document.body.classList.remove('danger');
-  document.getElementById('final-score').textContent = score + ' PUAN';
-  document.getElementById('overlay').classList.add('active');
-}
-
-// ===== INIT =====
-function startGame() {
-  score = 0;
-  wordsCompleted = 0;
-  gameActive = true;
-  document.getElementById('score-display').textContent = '0';
-  document.getElementById('word-display').textContent = '0';
-  document.getElementById('overlay').classList.remove('active');
-  document.body.classList.remove('danger');
-  initGrid();
-  renderGrid();
-  setStatus('ZAR AT VE BAŞLA', 'info');
-  document.getElementById('letter-choices').innerHTML = '';
-  document.getElementById('shuffle-btn').disabled = true;
-}
-
-// ===== HELPERS =====
-function shuffleArray(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-// ===== EVENTS =====
-document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('dice-btn').addEventListener('click', () => {
-    if (!gameActive) { gameActive = true; initGrid(); renderGrid(); }
-    startNewRound();
+  /* ── DOMContentLoaded ── */
+  document.addEventListener('DOMContentLoaded', () => {
+    bindEvents();
+    // Grid'i görsel olarak çiz (henüz oyun başlamadan)
+    Scoring.initGrid();
+    setStatus('📚 BAŞLAMAK İÇİN BASILIN');
   });
 
-  document.getElementById('shuffle-btn').addEventListener('click', shuffleLetterChoices);
+  return { start, restart };
 
-  document.getElementById('restart-btn').addEventListener('click', startGame);
-
-  document.getElementById('submit-score-btn').addEventListener('click', () => {
-    const nameInput = document.getElementById('player-name');
-    const name = nameInput.value.trim();
-    if (name.length > 0) {
-      playerName = name;
-      addToLeaderboard(name, score);
-      nameInput.value = '';
-      setStatus('SKOR KAYDEDİLDİ!', 'good');
-    }
-  });
-
-  loadLeaderboard();
-  startGame();
-});
+})();

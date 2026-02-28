@@ -8,6 +8,7 @@
 </head>
 <body>
 
+<!-- ── HEADER ── -->
 <header>
   <div class="logo">Harf Mimarı</div>
   <div class="score-area">
@@ -19,67 +20,167 @@
       <div class="score-label">Kelime</div>
       <div class="score-value" id="word-display">0</div>
     </div>
+    <div class="score-item">
+      <div class="score-label">Seviye</div>
+      <div class="score-value" id="level-display">1</div>
+    </div>
   </div>
 </header>
 
+<!-- ── ANA ALAN ── -->
 <div class="game-wrapper">
 
-  <div class="leaderboard">
-    <h3>🌍 Sıralama</h3>
-    <div id="leaderboard-list"></div>
-  </div>
-
-  <div class="game-area">
-    <div class="status-msg" id="status-msg">ZAR AT VE BAŞLA</div>
-    <div id="grid-container">
-      <div id="game-grid"></div>
-    </div>
-  </div>
-
+  <!-- SOL — Tema & Can & Bilgi -->
   <div class="controls-panel">
+
     <div class="panel-box">
-      <div class="panel-title">Harf Seç</div>
-      <div class="letter-choices" id="letter-choices"></div>
-      <br>
-      <button class="shuffle-btn" id="shuffle-btn" disabled>
-        ↺ Karıştır <span class="shuffle-count" id="shuffle-count">(1)</span>
-      </button>
+      <div class="panel-title">Tema</div>
+      <div class="theme-badge" id="theme-badge">—</div>
+      <div class="level-bar-wrap">
+        <div class="level-bar-fill" id="level-bar" style="width:0%"></div>
+      </div>
     </div>
 
     <div class="panel-box">
-      <div class="panel-title">Yeni Tur</div>
-      <button class="dice-btn" id="dice-btn">
-        <span class="dice-icon">⚄</span> ZAR AT
-      </button>
+      <div class="panel-title">Can</div>
+      <div class="lives-display" id="lives-display">
+        <span class="life-icon">📖</span>
+        <span class="life-icon">📖</span>
+        <span class="life-icon">📖</span>
+      </div>
     </div>
 
     <div class="panel-box">
       <div class="panel-title">Nasıl Oynanır</div>
-      <div style="font-size:9px; line-height:1.8; color: var(--text-dim); letter-spacing:1px;">
-        1. ZAR AT<br>
-        2. Doğru harfi seç<br>
-        3. Harfleri sürükle, kelime kur<br>
-        4. Yanlış seçim yukarı düşer!<br>
-        5. Tavan = GAME OVER
+      <div class="how-to">
+        Borulardan düşen<br>
+        doğru harfe dokun.<br>
+        Yanlış → blok düşer.<br>
+        Tavan = biter.<br>
+        Donma → sırala!
       </div>
     </div>
+
+  </div>
+
+  <!-- ORTA — Grid + Borular -->
+  <div class="game-area">
+
+    <div class="status-msg" id="status-msg">BAŞLAMAK İÇİN HAZIR</div>
+
+    <!-- GRID -->
+    <div id="grid-container">
+      <div id="game-grid"></div>
+    </div>
+
+    <!-- BORULAR -->
+    <div id="pipes-container">
+      <div class="pipe-column" id="pipe-col-0">
+        <div class="pipe-tube" id="pipe-0"></div>
+        <div class="pipe-label">I</div>
+      </div>
+      <div class="pipe-column" id="pipe-col-1">
+        <div class="pipe-tube" id="pipe-1"></div>
+        <div class="pipe-label">II</div>
+      </div>
+      <div class="pipe-column" id="pipe-col-2">
+        <div class="pipe-tube" id="pipe-2"></div>
+        <div class="pipe-label">III</div>
+      </div>
+    </div>
+
+    <!-- BAŞLAT -->
+    <button class="dice-btn" id="start-btn">
+      <span class="dice-icon">📚</span> BAŞLA
+    </button>
+
+  </div>
+
+  <!-- SAĞ — Kişisel Rekor & İstatistik -->
+  <div class="controls-panel">
+
+    <div class="panel-box">
+      <div class="panel-title">Rekor</div>
+      <div class="score-label">KİŞİSEL</div>
+      <div class="score-value" id="personal-best" style="font-size:20px; color:var(--book-navy)">—</div>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-title">Bu Oyun</div>
+      <div style="font-family:var(--font-body); font-size:9px; line-height:2.2; color:var(--ink-faded);">
+        <span>Doğru</span>
+        <span id="stat-correct" style="float:right; color:var(--book-green); font-weight:700;">0</span><br>
+        <span>Yanlış</span>
+        <span id="stat-wrong" style="float:right; color:var(--book-red); font-weight:700;">0</span><br>
+        <span>Kelime</span>
+        <span id="stat-words" style="float:right; color:var(--book-navy); font-weight:700;">0</span>
+      </div>
+    </div>
+
+    <div class="panel-box">
+      <div class="panel-title">Son Kelime</div>
+      <div id="word-def" style="font-family:var(--font-body); font-size:9px; line-height:1.8; color:var(--ink-faded); font-style:italic;">
+        —
+      </div>
+    </div>
+
   </div>
 
 </div>
 
+<!-- ── TEMA GİRİŞ EKRANI ── -->
+<div class="theme-intro-overlay" id="theme-intro">
+  <div class="theme-intro-rule"></div>
+  <div class="theme-intro-sub" id="theme-intro-sub">Yeni Dünya</div>
+  <div class="theme-intro-title" id="theme-intro-title">MUTFAK</div>
+  <div class="theme-intro-rule"></div>
+  <div class="theme-intro-sub" id="theme-intro-desc">Ocaklar yanar, kelimeler pişer.</div>
+</div>
+
+<!-- ── DONMA MODU ── -->
+<div class="overlay" id="freeze-overlay">
+  <div class="overlay-inner">
+    <div class="panel-title" style="font-size:11px; letter-spacing:4px;">DONMA MODU</div>
+    <div style="font-family:var(--font-body); font-size:9px; color:var(--ink-faded); letter-spacing:2px;">HARFLERİ DOĞRU SIRAYA DİZ</div>
+    <div id="freeze-grid" style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin:16px 0;"></div>
+    <div class="freeze-timer" id="freeze-timer">15</div>
+  </div>
+</div>
+
+<!-- ── BÖLÜM SONU ── -->
+<div class="section-end-overlay" id="section-end-overlay">
+  <div class="section-end-card">
+    <div class="panel-title" style="font-size:11px; letter-spacing:4px; border:none;">5 KELİME TAMAMLANDI</div>
+    <div class="section-words" id="section-words"></div>
+    <div class="section-quote" id="section-quote">—</div>
+    <button class="section-continue-btn" id="section-continue-btn">DEVAM ET →</button>
+  </div>
+</div>
+
+<!-- ── OYUN SONU ── -->
 <div class="overlay" id="overlay">
-  <h1>GAME OVER</h1>
-  <div class="final-score" id="final-score">0 PUAN</div>
-  <p>Skoru kaydet</p>
-  <div class="name-input-wrap">
-    <input type="text" id="player-name" placeholder="Adını yaz" maxlength="10">
-    <button class="submit-name-btn" id="submit-score-btn">KAYDET</button>
+  <div class="overlay-inner">
+    <h1>OYUN BİTTİ</h1>
+    <div class="final-score" id="final-score">0 PUAN</div>
+    <div style="font-family:var(--font-body); font-size:9px; color:var(--ink-faded); letter-spacing:2px;">
+      KİŞİSEL REKOR: <span id="final-personal-best" style="color:var(--book-gold);">—</span>
+    </div>
+    <p>Skoru kaydet</p>
+    <div class="name-input-wrap">
+      <input type="text" id="player-name" placeholder="ADIN NE?" maxlength="10">
+      <button class="submit-name-btn" id="submit-score-btn">KAYDET</button>
+    </div>
+    <button class="restart-btn" id="restart-btn">YENİDEN OYNa</button>
   </div>
-  <button class="restart-btn" id="restart-btn">YENİDEN OYNA</button>
 </div>
 
+<!-- ── SCRIPTS ── -->
 <script src="words.js"></script>
-<script src="leaderboard.js"></script>
+<script src="scoring.js"></script>
+<script src="themes.js"></script>
+<script src="pipes.js"></script>
+<script src="freeze.js"></script>
+<script src="section-end.js"></script>
 <script src="game.js"></script>
 
 </body>
